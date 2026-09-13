@@ -3,8 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { PDFDownloadLink } from "@react-pdf/renderer";
 import { toast } from "sonner";
 
+import { QuotationPdfDocument } from "~/app/_components/quotation-pdf";
 import { api } from "~/trpc/react";
 
 const aed = (v: string | number) =>
@@ -24,6 +26,8 @@ const STATUS_STYLE: Record<string, string> = {
   rejected: "bg-red-100 text-red-800",
   expired: "bg-slate-200 text-slate-600",
 };
+
+const PDF_READY = ["approved", "sent", "viewed", "accepted"];
 
 export default function QuotationDetailPage() {
   const params = useParams<{ id: string }>();
@@ -49,8 +53,7 @@ export default function QuotationDetailPage() {
 
   const quote = quoteQ.data;
   const me = meQ.data;
-  const isApprover =
-    me?.role === "sales_manager" || me?.role === "admin";
+  const isApprover = me?.role === "sales_manager" || me?.role === "admin";
   const isOwner = !!me && !!quote && quote.ownerId === me.id;
 
   const act = (
@@ -132,7 +135,7 @@ export default function QuotationDetailPage() {
               </div>
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-2 border-t border-[#eee7dc] pt-4">
+            <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-[#eee7dc] pt-4">
               {quote.status === "draft" && isOwner && (
                 <button
                   onClick={() => act("pending_approval")}
@@ -205,6 +208,51 @@ export default function QuotationDetailPage() {
                   Closed: {quote.status}
                 </span>
               )}
+
+              <div className="ml-auto">
+                {PDF_READY.includes(quote.status) ? (
+                  <PDFDownloadLink
+                    document={
+                      <QuotationPdfDocument
+                        quote={{
+                          quoteNumber: quote.quoteNumber,
+                          status: quote.status,
+                          validUntil: quote.validUntil,
+                          createdAt: new Date(quote.createdAt),
+                          companyName: quote.companyName,
+                          dealName: quote.dealName,
+                          customerNotes: quote.customerNotes,
+                          subtotal: quote.subtotal,
+                          discount: quote.discount,
+                          tax: quote.tax,
+                          total: quote.total,
+                        }}
+                        lineItems={quote.lineItems.map((l) => ({
+                          description: l.description,
+                          sku: l.sku,
+                          quantity: String(l.quantity),
+                          unitPrice: String(l.unitPrice),
+                          discount: String(l.discount),
+                          lineTotal: String(l.lineTotal),
+                        }))}
+                      />
+                    }
+                    fileName={`${quote.quoteNumber}.pdf`}
+                    className="rounded-md border border-[#e2dbd0] bg-white px-3 py-1.5 text-sm font-medium text-[#122f2a] hover:bg-[#f1ede5]"
+                  >
+                    {({ loading }) =>
+                      loading ? "Preparing…" : "⬇ Download PDF"
+                    }
+                  </PDFDownloadLink>
+                ) : (
+                  <span
+                    className="rounded-md border border-dashed border-[#d8cfc0] px-3 py-1.5 text-sm text-[#8b9793]"
+                    title="PDF becomes available once the quotation is approved"
+                  >
+                    PDF after approval
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -233,12 +281,8 @@ export default function QuotationDetailPage() {
                       </td>
                       <td className="px-3 py-2 text-[#8b9793]">{l.sku ?? "—"}</td>
                       <td className="px-3 py-2 text-right">{l.quantity}</td>
-                      <td className="px-3 py-2 text-right">
-                        {aed(l.unitPrice)}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {aed(l.discount)}
-                      </td>
+                      <td className="px-3 py-2 text-right">{aed(l.unitPrice)}</td>
+                      <td className="px-3 py-2 text-right">{aed(l.discount)}</td>
                       <td className="px-3 py-2 text-right">{l.taxRate}%</td>
                       <td className="px-3 py-2 text-right font-semibold text-[#122f2a]">
                         {aed(l.lineTotal)}
