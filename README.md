@@ -95,3 +95,11 @@ cp .env.example .env
 npm run db:push     # create schema
 npm run seed        # fictional demo data (idempotent)
 npm run dev         # http://localhost:3000
+
+## Testing
+
+Business rules (quotation math, lifecycle transitions, approval roles) live in
+`src/server/business-rules.ts` as pure functions and are locked by unit tests:
+
+```bash
+npm test

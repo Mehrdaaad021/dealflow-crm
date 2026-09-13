@@ -13,6 +13,12 @@ import {
   teamMembers,
   users,
 } from "~/server/db/schema";
+import {
+  canTransitionQuote,
+  computeTotals,
+  isApproverRole,
+  round2,
+} from "~/server/business-rules";
 import { sendQuotationStatusEmail } from "~/server/email";
 
 const lineItemInput = z.object({
@@ -24,22 +30,6 @@ const lineItemInput = z.object({
   discount: z.number().min(0, "Discount cannot be negative").default(0),
   taxRate: z.number().min(0).max(100).default(5),
 });
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
-
-function computeTotals(
-  lines: { lineSubtotal: number; lineTotal: number }[],
-  quoteDiscount: number,
-) {
-  const subtotal = round2(lines.reduce((s, l) => s + l.lineSubtotal, 0));
-  const linesTotal = round2(lines.reduce((s, l) => s + l.lineTotal, 0));
-  const base = round2(linesTotal - quoteDiscount);
-  const tax = round2(base * 0.05);
-  const total = round2(base + tax);
-  return { subtotal, discount: quoteDiscount, tax, total };
-}
-
-const APPROVER_ROLES = ["sales_manager", "admin"];
 
 export const quotationsRouter = createTRPCRouter({
   me: protectedProcedure.query(({ ctx }) => ({
@@ -414,24 +404,15 @@ export const quotationsRouter = createTRPCRouter({
       }
 
       const currentStatus = found.status;
-      const transitions: Record<string, string[]> = {
-        draft: ["pending_approval"],
-        pending_approval: ["approved", "rejected"],
-        approved: ["sent"],
-        sent: ["accepted", "rejected", "expired"],
-        accepted: [],
-        rejected: [],
-        expired: [],
-      };
 
-      if (!transitions[currentStatus]?.includes(input.status)) {
+      if (!canTransitionQuote(currentStatus, input.status)) {
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: `Cannot move a quotation from ${currentStatus} to ${input.status}`,
         });
       }
 
-      const isApprover = APPROVER_ROLES.includes(ctx.session.user.role);
+      const isApprover = isApproverRole(ctx.session.user.role);
       const isOwner = found.ownerId === ctx.session.user.id;
 
       if (input.status === "approved" && !isApprover) {
@@ -504,7 +485,6 @@ export const quotationsRouter = createTRPCRouter({
         },
       });
 
-      // Fire-and-forget email on approve / reject — never blocks the UI
       if (input.status === "approved" || input.status === "rejected") {
         const [owner] = await ctx.db
           .select({ name: users.name, email: users.email })
