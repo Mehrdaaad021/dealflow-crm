@@ -1,5 +1,5 @@
 # Dealflow CRM — B2B Sales Revenue Workspace
-
+**🌍 Live demo:** https://dealflow-crm-phi.vercel.app — login: `manager@dealflow.demo` / `Demo1234!`
 A portfolio-grade B2B sales CRM for UAE-based teams: companies, contacts,
 leads, a drag-and-drop pipeline, role-scoped tasks, an approval-driven
 quotation engine with server-side AED math, and audited sensitive actions.
