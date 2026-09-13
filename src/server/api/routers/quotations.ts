@@ -13,6 +13,7 @@ import {
   teamMembers,
   users,
 } from "~/server/db/schema";
+import { sendQuotationStatusEmail } from "~/server/email";
 
 const lineItemInput = z.object({
   productId: z.number().int().positive().optional(),
@@ -41,13 +42,11 @@ function computeTotals(
 const APPROVER_ROLES = ["sales_manager", "admin"];
 
 export const quotationsRouter = createTRPCRouter({
-  /** Who am I? (role-aware UI) */
   me: protectedProcedure.query(({ ctx }) => ({
     id: ctx.session.user.id,
     role: ctx.session.user.role,
   })),
 
-  /** Active product catalog for the builder. */
   catalog: protectedProcedure.query(async ({ ctx }) => {
     return ctx.db
       .select({
@@ -63,7 +62,6 @@ export const quotationsRouter = createTRPCRouter({
       .orderBy(asc(products.name));
   }),
 
-  /** Quotations visible to the current user. */
   list: protectedProcedure
     .input(
       z
@@ -126,7 +124,6 @@ export const quotationsRouter = createTRPCRouter({
         .orderBy(desc(quotations.createdAt));
     }),
 
-  /** One quotation with its line items. */
   byId: protectedProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .query(async ({ ctx, input }) => {
@@ -191,7 +188,6 @@ export const quotationsRouter = createTRPCRouter({
       return { ...quote, lineItems };
     }),
 
-  /** Create a draft quotation. All money math happens here, server-side. */
   create: protectedProcedure
     .input(
       z.object({
@@ -254,7 +250,6 @@ export const quotationsRouter = createTRPCRouter({
         }
       }
 
-      // Snapshot prices from the catalog at creation time
       const lines: {
         productId: number | null;
         description: string;
@@ -374,11 +369,6 @@ export const quotationsRouter = createTRPCRouter({
       return created;
     }),
 
-  /**
-   * Move a quotation through its lifecycle.
-   * draft -> pending_approval -> approved -> sent -> accepted | rejected | expired
-   * Approval and rejection-from-review require manager/admin.
-   */
   setStatus: protectedProcedure
     .input(
       z.object({
@@ -513,6 +503,40 @@ export const quotationsRouter = createTRPCRouter({
           reason: input.reason ?? null,
         },
       });
+
+      // Fire-and-forget email on approve / reject — never blocks the UI
+      if (input.status === "approved" || input.status === "rejected") {
+        const [owner] = await ctx.db
+          .select({ name: users.name, email: users.email })
+          .from(users)
+          .where(eq(users.id, found.ownerId))
+          .limit(1);
+        const [company] = await ctx.db
+          .select({ legalName: companies.legalName })
+          .from(companies)
+          .where(eq(companies.id, found.companyId))
+          .limit(1);
+        const [actor] = await ctx.db
+          .select({ name: users.name })
+          .from(users)
+          .where(eq(users.id, ctx.session.user.id))
+          .limit(1);
+
+        const recipient =
+          process.env.DEMO_EMAIL_RECIPIENT ?? owner?.email ?? "";
+        if (recipient) {
+          void sendQuotationStatusEmail({
+            to: recipient,
+            quoteNumber: found.quoteNumber,
+            companyName: company?.legalName ?? null,
+            status: input.status,
+            reason: input.reason ?? null,
+            actorName: actor?.name ?? null,
+          }).catch(() => {
+            // swallow — UI must not suffer for email failures
+          });
+        }
+      }
 
       return updated;
     }),
