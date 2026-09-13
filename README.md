@@ -34,7 +34,8 @@ Every scope rule is enforced server-side (tRPC procedures), never in the UI.
 | ![Quotations](docs/screenshots/08-quotations.png) | ![Analytics](docs/screenshots/11-analytics.png) |
 
 ## Feature highlights
-
+- **Approval emails** — Resend delivers a branded HTML email to the owner
+  when a quotation is approved or rejected, with the reason attached.
 - **Overview dashboard** — open/weighted pipeline, win rate, overdue
   follow-ups, revenue by stage, recent activity; personal-vs-team block for
   managers.
